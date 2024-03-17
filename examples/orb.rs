@@ -46,7 +46,7 @@ fn main() -> ImageResult<()> {
     // }
 
     let start = std::time::Instant::now();
-    let matches = match_binary_descriptors(&first_descriptors, &second_descriptors, 64);
+    let matches = match_binary_descriptors(&first_descriptors, &second_descriptors, 64, None);
     let elapsed = start.elapsed();
     println!(
         "Matched {} descriptor pairs in {:?}",
@@ -72,8 +72,8 @@ fn main() -> ImageResult<()> {
         .copy_from(&second_image, first_image.width(), 0)
         .unwrap();
     for keypoint_match in matches.iter() {
-        let start_point = keypoint_match.0.get_position();
-        let end_point = keypoint_match.1.get_position();
+        let start_point = keypoint_match.0.position();
+        let end_point = keypoint_match.1.position();
         draw_line_segment_mut(
             &mut output_image,
             (start_point.x as f32, start_point.y as f32),

@@ -44,28 +44,55 @@ where
         }
     }
 
-    let mut res = Vec::new();
-
     // If max distance is greater than epsilon, recursively simplify
-    if dmax > epsilon {
+    let mut res = if dmax > epsilon {
         // Recursive call
         let mut partial1 = approximate_polygon_dp(&curve[0..=index], epsilon, false);
-        let mut partial2 = approximate_polygon_dp(&curve[index..=end], epsilon, false);
+        let partial2 = approximate_polygon_dp(&curve[index..=end], epsilon, false);
 
         // Build the result list
         partial1.pop();
-        res.append(&mut partial1);
-        res.append(&mut partial2);
+        partial1.extend(partial2);
+        partial1
     } else {
-        res.push(curve[0]);
-        res.push(curve[end]);
-    }
+        vec![curve[0], curve[end]]
+    };
 
     if closed {
         res.pop();
     }
 
     res
+}
+
+/// Calculates the area of the contour using the [shoelace formula].
+/// The returned value is always non-negative.
+///
+/// [shoelace formula]: https://en.wikipedia.org/wiki/Shoelace_formula
+pub fn contour_area<T>(points: &[Point<T>]) -> f64
+where
+    T: NumCast + Copy,
+{
+    oriented_contour_area(points).abs()
+}
+
+/// Calculates the oriented area of the contour using the [shoelace formula].
+/// The returned value may be negative depending on the contour orientation (clockwise or counter-clockwise).
+///
+/// [shoelace formula]: https://en.wikipedia.org/wiki/Shoelace_formula
+pub fn oriented_contour_area<T>(points: &[Point<T>]) -> f64
+where
+    T: NumCast + Copy,
+{
+    if points.len() < 3 {
+        return 0.0;
+    }
+    let mut prev = points.last().unwrap().to_f64();
+    0.5 * points.iter().map(|p| p.to_f64()).fold(0.0, |mut accum, p| {
+        accum += prev.x * p.y - prev.y * p.x;
+        prev = p;
+        accum
+    })
 }
 
 /// Finds the rectangle of least area that includes all input points. This rectangle need not be axis-aligned.
@@ -103,23 +130,20 @@ where
     edge_angles.dedup();
 
     let mut min_area = f64::MAX;
-    let mut res = vec![Point::new(0.0, 0.0); 4];
+    let mut res = [Point::new(0.0, 0.0); 4];
     for angle in edge_angles {
         let rotation = Rotation::new(angle);
-        let rotated_points: Vec<Point<f64>> =
-            points.iter().map(|p| p.to_f64().rotate(rotation)).collect();
+        let rotated_points = points.iter().map(|p| p.to_f64().rotate(rotation));
 
         let (min_x, max_x, min_y, max_y) =
-            rotated_points
-                .iter()
-                .fold((f64::MAX, f64::MIN, f64::MAX, f64::MIN), |acc, p| {
-                    (
-                        acc.0.min(p.x),
-                        acc.1.max(p.x),
-                        acc.2.min(p.y),
-                        acc.3.max(p.y),
-                    )
-                });
+            rotated_points.fold((f64::MAX, f64::MIN, f64::MAX, f64::MIN), |acc, p| {
+                (
+                    acc.0.min(p.x),
+                    acc.1.max(p.x),
+                    acc.2.min(p.y),
+                    acc.3.max(p.y),
+                )
+            });
 
         let area = (max_x - min_x) * (max_y - min_y);
         if area < min_area {
@@ -311,7 +335,7 @@ mod tests {
 
     #[test]
     fn convex_hull_points_empty_vec() {
-        let points = convex_hull::<i32>(&vec![]);
+        let points = convex_hull::<i32>(&[]);
         assert_eq!(points, []);
     }
 
@@ -359,5 +383,37 @@ mod tests {
                 Point::new(57, 53)
             ]
         )
+    }
+
+    #[test]
+    fn test_contour_area() {
+        let points = [
+            Point::new(3, 4),
+            Point::new(5, 11),
+            Point::new(12, 8),
+            Point::new(9, 5),
+            Point::new(5, 6),
+        ];
+        let oriented_area = oriented_contour_area(&points);
+        assert_eq!(oriented_area, -30.0);
+        let area = contour_area(&points);
+        assert_eq!(area, 30.0);
+
+        let rect = vec![
+            Point::new(1, 1),
+            Point::new(1, 2),
+            Point::new(1, 3),
+            Point::new(1, 4),
+            Point::new(2, 4),
+            Point::new(3, 4),
+            Point::new(3, 3),
+            Point::new(3, 2),
+            Point::new(3, 1),
+            Point::new(2, 1),
+        ];
+        let oriented_area = oriented_contour_area(&rect);
+        assert_eq!(oriented_area, -6.0);
+        let area = contour_area(&rect);
+        assert_eq!(area, 6.0);
     }
 }

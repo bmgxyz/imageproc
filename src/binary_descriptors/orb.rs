@@ -35,13 +35,13 @@ impl BinaryDescriptor for OrbDescriptor {
     fn get_size(&self) -> u32 {
         self.descriptor.get_size()
     }
-    fn compute_hamming_distance(&self, other: &Self) -> u32 {
-        self.descriptor.compute_hamming_distance(&other.descriptor)
+    fn hamming_distance(&self, other: &Self) -> u32 {
+        self.descriptor.hamming_distance(&other.descriptor)
     }
     fn get_bit_subset(&self, bits: &[u32]) -> u128 {
         self.descriptor.get_bit_subset(bits)
     }
-    fn get_position(&self) -> Point<u32> {
+    fn position(&self) -> Point<u32> {
         self.descriptor.corner.into()
     }
 }
@@ -175,6 +175,7 @@ pub fn orb(
             fast_threshold,
             target_num_features / num_scales,
             BRIEF_PATCH_RADIUS + 1,
+            None,
         );
 
         let new_descriptors = rotated_brief(layer, &new_corners);
@@ -296,11 +297,11 @@ mod tests {
             .into_iter()
             .map(|_| OrientedFastCorner {
                 corner: Corner::new(
-                    rng.gen_range(24, image.width() - 24),
-                    rng.gen_range(24, image.height() - 24),
+                    rng.gen_range(24..image.width() - 24),
+                    rng.gen_range(24..image.height() - 24),
                     0.,
                 ),
-                orientation: rng.gen_range(-std::f32::consts::PI, std::f32::consts::PI),
+                orientation: rng.gen_range(-std::f32::consts::PI..std::f32::consts::PI),
             })
             .collect::<Vec<OrientedFastCorner>>();
         b.iter(|| {

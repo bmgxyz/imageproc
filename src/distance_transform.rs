@@ -408,10 +408,31 @@ mod tests {
     use crate::property_testing::GrayTestImage;
     use crate::utils::{gray_bench_image, pixel_diff_summary};
     use image::{GrayImage, Luma};
-    use quickcheck::{quickcheck, TestResult};
+    use quickcheck::{quickcheck, Arbitrary, Gen, TestResult};
     use std::cmp::max;
     use std::f64;
     use test::{black_box, Bencher};
+
+    /// Avoid generating garbage floats during certain calculations below.
+    #[derive(Debug, Clone)]
+    struct BoundedFloat(f64);
+
+    impl Arbitrary for BoundedFloat {
+        fn arbitrary(g: &mut Gen) -> Self {
+            let mut f;
+
+            loop {
+                f = f64::arbitrary(g);
+
+                if f.is_normal() {
+                    f = f.clamp(-1_000_000.0, 1_000_000.0);
+                    break;
+                }
+            }
+
+            BoundedFloat(f)
+        }
+    }
 
     #[test]
     fn test_distance_transform_saturation() {
@@ -428,7 +449,7 @@ mod tests {
         assert_pixels_eq!(distances, expected);
     }
 
-    impl<'a> Sink for Vec<f64> {
+    impl Sink for Vec<f64> {
         fn put(&mut self, idx: usize, value: f64) {
             self[idx] = value;
         }
@@ -483,19 +504,21 @@ mod tests {
                     let dist = p as f64 - q as f64;
                     dist * dist + f[p]
                 })
-                .fold(0.0 / 0.0, f64::min);
+                .fold(f64::NAN, f64::min);
         }
         ret
     }
 
     #[test]
     fn test_distance_transform_1d_matches_reference_implementation() {
-        fn prop(f: Vec<f64>) -> bool {
-            let expected = distance_transform_1d_reference(&f);
-            let actual = distance_transform_1d(&f);
+        fn prop(f: Vec<BoundedFloat>) -> bool {
+            let v: Vec<f64> = f.into_iter().map(|n| n.0).collect();
+            let expected = distance_transform_1d_reference(&v);
+            let actual = distance_transform_1d(&v);
             expected == actual
         }
-        quickcheck(prop as fn(Vec<f64>) -> bool);
+
+        quickcheck(prop as fn(Vec<BoundedFloat>) -> bool);
     }
 
     fn euclidean_squared_distance_transform_reference(image: &Image<Luma<u8>>) -> Image<Luma<f64>> {

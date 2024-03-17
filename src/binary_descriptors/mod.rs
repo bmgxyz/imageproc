@@ -1,6 +1,6 @@
 //! Functions for generating and comparing compact binary patch descriptors.
 
-use rand::Rng;
+use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::collections::HashMap;
 
 use crate::point::Point;
@@ -19,7 +19,7 @@ pub trait BinaryDescriptor {
     /// Panics if the two descriptors have unequal lengths. The descriptors
     /// should have been computed using the same set of test pairs, otherwise
     /// comparing them has no meaning.
-    fn compute_hamming_distance(&self, other: &Self) -> u32;
+    fn hamming_distance(&self, other: &Self) -> u32;
     /// Given a set of bit indices, returns those bits from the descriptor as a
     /// single concatenated value.
     ///
@@ -27,17 +27,8 @@ pub trait BinaryDescriptor {
     fn get_bit_subset(&self, bits: &[u32]) -> u128;
     /// Returns the pixel location of this binary descriptor in its associated
     /// image.
-    fn get_position(&self) -> Point<u32>;
+    fn position(&self) -> Point<u32>;
 }
-
-// impl Display for BriefDescriptor {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         for chunk in self.bits.iter() {
-//             write!(f, "{:#32x}", chunk)?;
-//         }
-//         Ok(())
-//     }
-// }
 
 /// For each descriptor in `d1`, find the descriptor in `d2` with the minimum
 /// Hamming distance below `threshold`. If no such descriptor exists in `d2`,
@@ -59,13 +50,18 @@ pub fn match_binary_descriptors<'a, T: BinaryDescriptor>(
     d1: &'a [T],
     d2: &'a [T],
     threshold: u32,
+    seed: Option<u64>,
 ) -> Vec<(&'a T, &'a T)> {
     // early return if either input is empty
     if d1.is_empty() || d2.is_empty() {
         return Vec::new();
     }
 
-    let mut rng = rand::thread_rng();
+    let mut rng = if let Some(s) = seed {
+        StdRng::seed_from_u64(s)
+    } else {
+        StdRng::from_entropy()
+    };
 
     // locality-sensitive hashing (LSH)
     // this algorithm is log(d2.len()) but linear in d1.len(), so swap the inputs if needed
@@ -84,7 +80,7 @@ pub fn match_binary_descriptors<'a, T: BinaryDescriptor>(
     for _ in 0..l {
         // choose k random bits (not necessarily unique)
         let bits = (0..k)
-            .map(|_| rng.gen_range(0, queries[0].get_size()))
+            .map(|_| rng.gen_range(0..queries[0].get_size()))
             .collect::<Vec<u32>>();
 
         let mut new_hashmap = HashMap::<u128, Vec<&T>>::with_capacity(database.len());
@@ -120,7 +116,7 @@ pub fn match_binary_descriptors<'a, T: BinaryDescriptor>(
         let mut best_score = u32::MAX;
         let mut best_candidate = None;
         for c in candidates {
-            let distance = query.compute_hamming_distance(c);
+            let distance = query.hamming_distance(c);
             if distance < best_score {
                 best_score = distance;
                 best_candidate = Some(c);
@@ -150,11 +146,10 @@ mod tests {
         let image = gray_bench_image(640, 480);
         let mut rng = rand::thread_rng();
         let keypoints = (0..1000)
-            .into_iter()
             .map(|_| {
                 Point::new(
-                    rng.gen_range(20, image.width() - 20),
-                    rng.gen_range(20, image.height() - 20),
+                    rng.gen_range(20..image.width() - 20),
+                    rng.gen_range(20..image.height() - 20),
                 )
             })
             .collect::<Vec<Point<u32>>>();
@@ -165,6 +160,7 @@ mod tests {
                 &first_descriptors,
                 &second_descriptors,
                 24,
+                Some(0xc0),
             ));
         });
     }

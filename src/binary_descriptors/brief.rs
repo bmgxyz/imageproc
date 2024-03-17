@@ -1,7 +1,7 @@
 //! Structs and functions for finding and computing BRIEF descriptors as
-//! described in [Calonder, et. al. (2010)][calonder].
+//! described in [Calonder, et. al. (2010)].
 ///
-/// [calonder]: https://www.cs.ubc.ca/~lowe/525/papers/calonder_eccv10.pdf
+/// [Calonder, et. al. (2010)]: https://www.cs.ubc.ca/~lowe/525/papers/calonder_eccv10.pdf
 use image::{GenericImageView, GrayImage, ImageBuffer, Luma};
 use rand_distr::{Distribution, Normal};
 
@@ -12,9 +12,9 @@ use super::{
     BinaryDescriptor,
 };
 
-/// BRIEF descriptor as described in [Calonder, et. al. (2010)][calonder].
+/// BRIEF descriptor as described in [Calonder, et. al. (2010)].
 ///
-/// [calonder]: https://www.cs.ubc.ca/~lowe/525/papers/calonder_eccv10.pdf
+/// [Calonder, et. al. (2010)]: https://www.cs.ubc.ca/~lowe/525/papers/calonder_eccv10.pdf
 #[derive(Clone, PartialEq)]
 pub struct BriefDescriptor {
     /// Results of the pairwise pixel intensity tests that comprise this BRIEF
@@ -29,7 +29,8 @@ impl BinaryDescriptor for BriefDescriptor {
     fn get_size(&self) -> u32 {
         (self.bits.len() * 128) as u32
     }
-    fn compute_hamming_distance(&self, other: &Self) -> u32 {
+
+    fn hamming_distance(&self, other: &Self) -> u32 {
         assert_eq!(self.get_size(), other.get_size());
         self.bits
             .iter()
@@ -50,7 +51,8 @@ impl BinaryDescriptor for BriefDescriptor {
         }
         subset
     }
-    fn get_position(&self) -> Point<u32> {
+
+    fn position(&self) -> Point<u32> {
         self.corner.into()
     }
 }
@@ -70,12 +72,15 @@ fn local_pixel_average(
     y: u32,
     radius: u32,
 ) -> u8 {
+    if radius == 0 {
+        return 0;
+    }
     let y_min = if y < radius { 0 } else { y - radius };
     let x_min = if x < radius { 0 } else { x - radius };
-    let y_max = u32::min(y + radius, integral_image.height() - radius);
-    let x_max = u32::min(x + radius, integral_image.width() - radius);
+    let y_max = u32::min(y + radius + 1, integral_image.height() - 1);
+    let x_max = u32::min(x + radius + 1, integral_image.width() - 1);
 
-    let pixel_area = (y_max - y_min + 1) * (x_max - x_min + 1);
+    let pixel_area = (y_max - y_min) * (x_max - x_min);
     if pixel_area == 0 {
         return 0;
     }
@@ -97,10 +102,10 @@ fn local_pixel_average(
     // function.
     let (bottom_right, top_left, top_right, bottom_left) = unsafe {
         (
-            integral_image.unsafe_get_pixel(x_max + 1, y_max + 1)[0],
+            integral_image.unsafe_get_pixel(x_max, y_max)[0],
             integral_image.unsafe_get_pixel(x_min, y_min)[0],
-            integral_image.unsafe_get_pixel(x_max + 1, y_min)[0],
-            integral_image.unsafe_get_pixel(x_min, y_max + 1)[0],
+            integral_image.unsafe_get_pixel(x_max, y_min)[0],
+            integral_image.unsafe_get_pixel(x_min, y_max)[0],
         )
     };
     let total_intensity = bottom_right + top_left - top_right - bottom_left;
@@ -110,7 +115,7 @@ fn local_pixel_average(
 pub(crate) fn brief_impl(
     integral_image: &ImageBuffer<Luma<u32>, Vec<u32>>,
     keypoints: &[Point<u32>],
-    test_pairs: &Vec<TestPair>,
+    test_pairs: &[TestPair],
     length: usize,
 ) -> Result<Vec<BriefDescriptor>, String> {
     if length % 128 != 0 {
@@ -122,7 +127,7 @@ pub(crate) fn brief_impl(
 
     if length != test_pairs.len() {
         return Err(format!(
-            "BRIEF descriptor length must be equal to the number or test pairs ({} != {})",
+            "BRIEF descriptor length must be equal to the number of test pairs ({} != {})",
             length,
             test_pairs.len()
         ));
@@ -207,7 +212,7 @@ pub(crate) fn brief_impl(
 /// If `override_test_pairs` is `None`, then `TestPair`s are generated according
 /// to an isotropic Gaussian.
 ///
-/// Calonder used Gaussian smoothing to decrease the effects of noise in the
+/// [Calonder, et. al. (2010)] used Gaussian smoothing to decrease the effects of noise in the
 /// patches. This is slow, even with a box filter approximation. For maximum
 /// performance, the average intensities of sub-patches of radius 5 around the
 /// test points are computed and used instead of the intensities of the test
@@ -217,9 +222,7 @@ pub(crate) fn brief_impl(
 /// descriptors.
 ///
 /// [rublee]: http://www.gwylab.com/download/ORB_2012.pdf
-///
-/// See [Calonder et. al.
-/// (2010)][https://www.cs.ubc.ca/~lowe/525/papers/calonder_eccv10.pdf]
+/// [Calonder, et. al. (2010)]: https://www.cs.ubc.ca/~lowe/525/papers/calonder_eccv10.pdf
 pub fn brief(
     image: &GrayImage,
     keypoints: &[Point<u32>],
@@ -288,7 +291,7 @@ mod tests {
             ],
             corner: Corner::new(0, 0, 0.),
         };
-        assert_eq!(d1.compute_hamming_distance(&d2), 134);
+        assert_eq!(d1.hamming_distance(&d2), 134);
     }
 
     #[test]
@@ -329,11 +332,10 @@ mod tests {
         let image = gray_bench_image(640, 480);
         let mut rng = rand::thread_rng();
         let keypoints = (0..1000)
-            .into_iter()
             .map(|_| {
                 Point::new(
-                    rng.gen_range(24, image.width() - 24),
-                    rng.gen_range(24, image.height() - 24),
+                    rng.gen_range(24..image.width() - 24),
+                    rng.gen_range(24..image.height() - 24),
                 )
             })
             .collect::<Vec<Point<u32>>>();
@@ -348,11 +350,10 @@ mod tests {
         let image = gray_bench_image(640, 480);
         let mut rng = rand::thread_rng();
         let keypoints = (0..1000)
-            .into_iter()
             .map(|_| {
                 Point::new(
-                    rng.gen_range(24, image.width() - 24),
-                    rng.gen_range(24, image.height() - 24),
+                    rng.gen_range(24..image.width() - 24),
+                    rng.gen_range(24..image.height() - 24),
                 )
             })
             .collect::<Vec<Point<u32>>>();

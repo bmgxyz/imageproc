@@ -5,6 +5,7 @@ use crate::{
     point::Point,
 };
 use image::{GenericImageView, GrayImage};
+use rand::{rngs::StdRng, SeedableRng};
 use rand_distr::Distribution;
 
 /// A location and score for a detected corner.
@@ -174,6 +175,7 @@ pub fn oriented_fast(
     threshold: Option<u8>,
     target_num_corners: usize,
     edge_radius: u32,
+    seed: Option<u64>,
 ) -> Vec<OrientedFastCorner> {
     let (width, height) = image.dimensions();
     let (min_x, max_x) = (edge_radius, width - edge_radius);
@@ -186,7 +188,11 @@ pub fn oriented_fast(
         // Take a sample of random pixels, compute their FAST scores, and set the
         // threshold for the full image accordingly.
         const NUM_SAMPLE_POINTS: usize = 1000;
-        let mut rng = rand::thread_rng();
+        let mut rng = if let Some(s) = seed {
+            StdRng::seed_from_u64(s)
+        } else {
+            StdRng::from_entropy()
+        };
         let dist_x = rand::distributions::Uniform::new(min_x, max_x);
         let dist_y = rand::distributions::Uniform::new(min_y, max_y);
         let sample_size = NUM_SAMPLE_POINTS.min((width * height) as usize);
@@ -512,7 +518,7 @@ mod tests {
             10, 00, 10, 10, 10, 10, 10;
             10, 10, 00, 00, 00, 10, 10);
 
-        assert_eq!(is_corner_fast12(&image, 8, 3, 3), true);
+        assert!(is_corner_fast12(&image, 8, 3, 3));
     }
 
     #[test]
@@ -526,7 +532,7 @@ mod tests {
             10, 00, 10, 10, 10, 10, 10;
             10, 10, 00, 00, 00, 10, 10);
 
-        assert_eq!(is_corner_fast12(&image, 15, 3, 3), false);
+        assert!(!is_corner_fast12(&image, 15, 3, 3));
     }
 
     #[test]
@@ -540,7 +546,7 @@ mod tests {
             00, 10, 00, 00, 00, 00, 00;
             00, 00, 10, 10, 10, 00, 00);
 
-        assert_eq!(is_corner_fast12(&image, 8, 3, 3), true);
+        assert!(is_corner_fast12(&image, 8, 3, 3));
     }
 
     #[test]
@@ -554,7 +560,7 @@ mod tests {
             10, 00, 10, 10, 10, 10, 10;
             10, 10, 00, 00, 00, 10, 10);
 
-        assert_eq!(is_corner_fast12(&image, 8, 3, 3), false);
+        assert!(!is_corner_fast12(&image, 8, 3, 3));
     }
 
     #[bench]
@@ -582,7 +588,7 @@ mod tests {
             10, 00, 10, 10, 10, 10, 10;
             10, 10, 00, 00, 00, 10, 10);
 
-        assert_eq!(is_corner_fast12(&image, 8, 1, 1), false);
+        assert!(!is_corner_fast12(&image, 8, 1, 1));
     }
 
     #[test]
@@ -614,7 +620,7 @@ mod tests {
             10, 00, 10, 10, 10, 10, 10;
             10, 10, 10, 10, 10, 10, 10);
 
-        assert_eq!(is_corner_fast9(&image, 8, 3, 3), true);
+        assert!(is_corner_fast9(&image, 8, 3, 3));
     }
 
     #[test]
@@ -628,7 +634,7 @@ mod tests {
             00, 10, 00, 00, 00, 00, 00;
             00, 00, 00, 00, 00, 00, 00);
 
-        assert_eq!(is_corner_fast9(&image, 8, 3, 3), true);
+        assert!(is_corner_fast9(&image, 8, 3, 3));
     }
 
     #[test]
@@ -673,7 +679,7 @@ mod tests {
             00, 00, 00, 00, 00, 10, 00;
             00, 00, 00, 10, 10, 00, 00);
 
-        b.iter(|| black_box(oriented_fast(&image, Some(0), 1, 0)));
+        b.iter(|| black_box(oriented_fast(&image, Some(0), 1, 0, Some(0xc0))));
     }
 
     #[bench]
@@ -687,7 +693,7 @@ mod tests {
             00, 00, 00, 00, 00, 00, 00;
             00, 00, 00, 00, 00, 00, 00);
 
-        b.iter(|| black_box(oriented_fast(&image, Some(255), 0, 0)));
+        b.iter(|| black_box(oriented_fast(&image, Some(255), 0, 0, Some(0xc0))));
     }
 
     #[bench]
@@ -715,7 +721,7 @@ mod tests {
             10, 00, 10, 10, 10, 10, 10;
             10, 10, 00, 00, 00, 10, 10);
 
-        assert_eq!(is_corner_fast9(&image, 8, 3, 3), false);
+        assert!(!is_corner_fast9(&image, 8, 3, 3));
     }
 
     #[test]
